@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCINVEST PRO STATION — Gold Trading Desk</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root {
+            --amber: #f59e0b;
+            --emerald: #10b981;
+            --rose: #f43f5e;
+            --cyan: #22d3ee;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            background: #05080b;
+            color: #e2e8f0;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0a0d10;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2d3748;
+            border-radius: 2px;
+        }
+
+        .glow-amber {
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.15);
+        }
+
+        .glow-green {
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
+        }
+
+        .glow-red {
+            box-shadow: 0 0 16px rgba(244, 63, 94, 0.2);
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .4;
+            }
+        }
+
+        .live-dot {
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen overflow-x-hidden">
+
+    <!-- Ambient glow blobs -->
+    <div class="fixed top-0 left-0 w-96 h-96 rounded-full bg-amber-500/5 blur-[120px] pointer-events-none"></div>
+    <div class="fixed bottom-0 right-0 w-96 h-96 rounded-full bg-blue-600/5 blur-[130px] pointer-events-none"></div>
+
+    <div class="max-w-[1700px] mx-auto p-3 md:p-5 flex flex-col gap-4">
+
+        <!-- ═══════════════════════════════════════════════════════
+         HEADER
+         ═══════════════════════════════════════════════════════ -->
+        <header
+            class="bg-[#0c1017]/90 backdrop-blur-xl border border-white/[0.06] rounded-xl px-5 py-3 flex flex-wrap justify-between items-center gap-3 shadow-2xl">
+            <div class="flex items-center gap-3">
+                <span
+                    class="bg-amber-500/20 border border-amber-500/60 text-amber-400 font-black text-[11px] px-2.5 py-1 rounded tracking-[0.12em] uppercase font-mono">GOLD
+                    PRO</span>
+                <div>
+                    <h1 class="text-base font-bold tracking-tight text-white leading-none">TCINVEST PRO STATION</h1>
+                    <p class="text-[10px] text-gray-500 font-mono mt-0.5">Automated Multi-TF Signal Engine • XAU/USD</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2.5 flex-wrap">
+                <div class="font-mono text-[11px] text-gray-300 bg-white/[0.03] border border-white/[0.06] px-3 py-1 rounded-full"
+                    id="local-clock">--:--:--</div>
+                <div class="font-mono text-[11px] text-gray-500 bg-white/[0.03] border border-white/[0.06] px-3 py-1 rounded-full"
+                    id="utc-clock">-- UTC</div>
+                <div class="flex items-center gap-1.5 font-mono text-[11px] px-3 py-1 bg-white/[0.03] border border-white/[0.06] rounded-full text-gray-400"
+                    id="conn-status">
+                    <span class="w-2 h-2 rounded-full bg-gray-500 live-dot"></span>CONNECTING
+                </div>
+                <!-- Market Trend Badge -->
+                <div class="flex items-center gap-1.5 font-mono text-[11px] px-3 py-1 border rounded-full"
+                    id="trend-badge">
+                    <span>TREND: —</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ═══════════════════════════════════════════════════════
+         MAIN GRID: Watchlist | Charts | Signal Panel
+         ═══════════════════════════════════════════════════════ -->
+        <div class="grid grid-cols-1 lg:grid-cols-[260px_1fr_300px] gap-4">
+
+            <!-- WATCHLIST -->
+            <aside class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4 flex flex-col gap-3">
+                <h2
+                    class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-400 font-mono border-b border-white/[0.06] pb-2">
+                    📊 Watchlist</h2>
+                <div id="watchlist-container" class="flex flex-col gap-2">
+                    <p class="text-xs text-gray-600 italic text-center py-3">Loading...</p>
+                </div>
+                <!-- Win Rate Scoreboard -->
+                <div class="mt-auto border-t border-white/[0.06] pt-3">
+                    <p class="text-[10px] uppercase tracking-wider text-amber-400 font-mono font-bold mb-2">🏆 Win Rate
+                    </p>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2 text-center">
+                            <p class="text-[10px] text-gray-400 font-mono">WINS</p>
+                            <p class="text-lg font-black text-emerald-400 font-mono" id="stat-wins">0</p>
+                        </div>
+                        <div class="bg-rose-500/10 border border-rose-500/20 rounded-lg p-2 text-center">
+                            <p class="text-[10px] text-gray-400 font-mono">LOSSES</p>
+                            <p class="text-lg font-black text-rose-500 font-mono" id="stat-losses">0</p>
+                        </div>
+                    </div>
+                    <div class="mt-2 bg-white/[0.03] border border-white/[0.05] rounded-lg p-3 text-center">
+                        <p class="text-[10px] text-gray-400 font-mono mb-1">WIN RATE</p>
+                        <p class="text-3xl font-black font-mono" id="stat-winrate">0.0%</p>
+                        <p class="text-[10px] text-gray-500 font-mono mt-0.5"><span id="stat-total">0</span> trades
+                            closed</p>
+                    </div>
+                    <!-- WR bar -->
+                    <div class="mt-2 w-full h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                        <div id="wr-bar"
+                            class="h-full rounded-full bg-gradient-to-r from-rose-500 via-amber-400 to-emerald-500 transition-all duration-700"
+                            style="width:0%"></div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- CHART STATION -->
+            <section
+                class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4 flex flex-col gap-3 min-h-[600px]">
+                <div class="flex justify-between items-center border-b border-white/[0.06] pb-2">
+                    <h2 class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-400 font-mono">📈 Gold Spot
+                        Chart</h2>
+                    <div class="flex gap-1" id="tf-tabs">
+                        <button data-tf="M1"
+                            class="tf-btn active-tf px-2.5 py-1 text-[11px] font-bold font-mono rounded border transition-all cursor-pointer">1m</button>
+                        <button data-tf="M5"
+                            class="tf-btn px-2.5 py-1 text-[11px] font-bold font-mono rounded border border-white/10 text-gray-400 transition-all cursor-pointer">5m</button>
+                        <button data-tf="H1"
+                            class="tf-btn px-2.5 py-1 text-[11px] font-bold font-mono rounded border border-white/10 text-gray-400 transition-all cursor-pointer">H1</button>
+                        <button data-tf="H4"
+                            class="tf-btn px-2.5 py-1 text-[11px] font-bold font-mono rounded border border-white/10 text-gray-400 transition-all cursor-pointer">H4</button>
+                    </div>
+                </div>
+                <!-- Main candlestick chart -->
+                <div id="chart-price" class="w-full flex-grow min-h-[280px] rounded-lg overflow-hidden"></div>
+                <!-- RSI sub-chart -->
+                <div class="flex items-center gap-2 mt-1">
+                    <span
+                        class="text-[10px] font-bold font-mono text-purple-400 uppercase tracking-wider">RSI(14)</span>
+                    <span class="text-[10px] text-gray-500">— 70 overbought · 30 oversold</span>
+                </div>
+                <div id="chart-rsi" class="w-full h-[90px] rounded-lg overflow-hidden"></div>
+                <!-- ADX sub-chart -->
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-bold font-mono text-sky-400 uppercase tracking-wider">ADX(14)</span>
+                    <span class="text-[10px] text-gray-500">— 25+ trend is strong</span>
+                </div>
+                <div id="chart-adx" class="w-full h-[80px] rounded-lg overflow-hidden"></div>
+            </section>
+
+            <!-- SIGNAL & ORDER PANEL -->
+            <aside class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4 flex flex-col gap-3">
+                <div class="border-b border-white/[0.06] pb-2 flex justify-between items-center">
+                    <h2 class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-400 font-mono">⚡ Signal
+                        Engine</h2>
+                    <span
+                        class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">AUTO</span>
+                </div>
+
+                <!-- Signal reason -->
+                <div class="bg-black/20 border border-white/[0.04] rounded-lg p-2.5 text-[10px] font-mono text-gray-400 leading-relaxed"
+                    id="signal-reason">
+                    Initializing multi-TF analysis...
+                </div>
+
+                <!-- Signal badge + OHLC block -->
+                <div id="signal-box"
+                    class="bg-white/[0.02] border border-white/[0.05] rounded-lg p-3.5 flex flex-col gap-2.5">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] text-gray-400 font-mono">ACTION:</span>
+                        <span id="signal-badge"
+                            class="px-3 py-0.5 text-[11px] font-black font-mono rounded border">—</span>
+                    </div>
+                    <div class="h-px bg-white/[0.04]"></div>
+                    <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] font-mono">
+                        <span class="text-gray-500">ENTRY:</span> <span id="signal-entry"
+                            class="text-right font-bold text-gray-200">—</span>
+                        <span class="text-rose-500/70">SL:</span> <span id="signal-sl"
+                            class="text-right font-bold text-rose-500">—</span>
+                        <span class="text-blue-400/70">TP:</span> <span id="signal-tp"
+                            class="text-right font-bold text-blue-400">—</span>
+                    </div>
+                    <div class="h-px bg-white/[0.04]"></div>
+                    <!-- Confidence bar -->
+                    <div class="flex flex-col gap-1">
+                        <div class="flex justify-between text-[10px] font-mono text-gray-400">
+                            <span>CONFIDENCE</span><span id="signal-conf-val" class="text-gray-200 font-bold">0%</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                            <div id="signal-conf-bar" class="h-full rounded-full transition-all duration-500"
+                                style="width:0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Position -->
+                <div class="bg-white/[0.02] border border-white/[0.05] rounded-lg p-3 flex flex-col gap-1.5">
+                    <p class="text-[10px] font-bold text-amber-400 font-mono uppercase tracking-wider mb-0.5">Active
+                        Position</p>
+                    <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-mono">
+                        <span class="text-gray-500">ENTRY:</span> <span id="pos-entry"
+                            class="text-right text-gray-300">—</span>
+                        <span class="text-gray-500">MARKET:</span> <span id="pos-market"
+                            class="text-right text-white font-bold">—</span>
+                        <span class="text-gray-500">PNL:</span> <span id="pos-pnl" class="text-right font-bold">—</span>
+                        <span class="text-gray-500">STATUS:</span> <span id="pos-status"
+                            class="text-right font-semibold text-gray-400">—</span>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════
+         BOTTOM: Trade History | Economic Calendar
+         ═══════════════════════════════════════════════════════ -->
+        <div class="grid grid-cols-1 xl:grid-cols-[1fr_1.6fr] gap-4">
+
+            <!-- Trade History -->
+            <section class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4">
+                <h2
+                    class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-400 font-mono border-b border-white/[0.06] pb-2 mb-3">
+                    📋 Trade History (Virtual Sim)</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-[11px] font-mono border-collapse">
+                        <thead>
+                            <tr class="text-gray-500 uppercase border-b border-white/[0.05]">
+                                <th class="pb-1.5 text-left">Time</th>
+                                <th class="pb-1.5 text-left">Dir</th>
+                                <th class="pb-1.5 text-right">Entry</th>
+                                <th class="pb-1.5 text-right">Exit</th>
+                                <th class="pb-1.5 text-right">PnL</th>
+                                <th class="pb-1.5 text-center">Result</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body" class="divide-y divide-white/[0.03]">
+                            <tr>
+                                <td colspan="6" class="py-4 text-center text-gray-600 italic">No trades yet...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Economic Calendar -->
+            <section class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4">
+                <h2
+                    class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-400 font-mono border-b border-white/[0.06] pb-2 mb-3">
+                    📅 Economic Calendar (XAU/USD)</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-[11px] font-mono border-collapse">
+                        <thead>
+                            <tr class="text-gray-500 uppercase border-b border-white/[0.05]">
+                                <th class="pb-1.5 text-left">Event</th>
+                                <th class="pb-1.5 text-center">Time</th>
+                                <th class="pb-1.5 text-center">Countdown</th>
+                                <th class="pb-1.5 text-center">Forecast</th>
+                                <th class="pb-1.5 text-center">Impact</th>
+                            </tr>
+                        </thead>
+                        <tbody id="calendar-body" class="divide-y divide-white/[0.03]">
+                            <tr>
+                                <td colspan="5" class="py-4 text-center text-gray-600 italic">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+    </div><!-- /container -->
+
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>
