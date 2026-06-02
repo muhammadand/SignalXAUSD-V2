@@ -82,15 +82,138 @@ def calculate_adx(candles, period=14):
     return result
 
 
-def get_trend(candles_h1, candles_h4):
+def calculate_ema(candles, period):
+    """Exponential Moving Average (EMA) — returns list of {epoch, value}."""
+    out = [{"epoch": c["epoch"], "value": c["close"]} for c in candles]
+    if len(candles) < period:
+        return out
+
+    closes = [c["close"] for c in candles]
+    sma = sum(closes[:period]) / period
+    
+    result = [{"epoch": candles[i]["epoch"], "value": closes[i]} for i in range(period - 1)]
+    result.append({"epoch": candles[period - 1]["epoch"], "value": sma})
+    
+    k = 2.0 / (period + 1.0)
+    current_ema = sma
+    
+    for i in range(period, len(candles)):
+        current_ema = (closes[i] * k) + (current_ema * (1.0 - k))
+        result.append({"epoch": candles[i]["epoch"], "value": current_ema})
+        
+    return result
+
+
+def calculate_vwap(candles):
+    """Intraday VWAP - resets cumulative sums on day boundary."""
+    out = [{"epoch": c["epoch"], "value": c["close"]} for c in candles]
+    if not candles:
+        return out
+        
+    cum_tp_vol = 0.0
+    cum_vol = 0.0
+    last_date = None
+    
+    result = []
+    for c in candles:
+        epoch = c["epoch"]
+        dt = datetime.fromtimestamp(epoch)
+        curr_date = dt.date()
+        
+        if last_date is not None and curr_date != last_date:
+            cum_tp_vol = 0.0
+            cum_vol = 0.0
+            
+        last_date = curr_date
+        
+        tp = (c["high"] + c["low"] + c["close"]) / 3.0
+        vol = float(c.get("volume", c.get("count", 1.0)))
+        if vol <= 0:
+            vol = 1.0
+            
+        cum_tp_vol += tp * vol
+        cum_vol += vol
+        
+        vwap_val = cum_tp_vol / cum_vol if cum_vol > 0 else tp
+        result.append({"epoch": epoch, "value": vwap_val})
+        
+    return result
+
+
+def calculate_atr(candles, period=14):
+    """Average True Range (ATR) — returns list of {epoch, value}."""
+    out = [{"epoch": c["epoch"], "value": 0.1} for c in candles]
+    if len(candles) < 2:
+        return out
+
+    tr_list = []
+    for i in range(len(candles)):
+        if i == 0:
+            tr_list.append(candles[i]["high"] - candles[i]["low"])
+        else:
+            h, l, pc = candles[i]["high"], candles[i]["low"], candles[i - 1]["close"]
+            tr_list.append(max(h - l, abs(h - pc), abs(l - pc)))
+
+    if len(candles) <= period:
+        return out
+
+    atr_val = sum(tr_list[:period]) / period
+    result = [{"epoch": candles[i]["epoch"], "value": 0.1} for i in range(period)]
+    result.append({"epoch": candles[period]["epoch"], "value": atr_val})
+
+    for i in range(period, len(tr_list) - 1):
+        atr_val = (atr_val * (period - 1) + tr_list[i + 1]) / period
+        result.append({"epoch": candles[i + 1]["epoch"], "value": atr_val})
+
+    while len(result) < len(candles):
+        result.append({"epoch": candles[len(result)]["epoch"], "value": atr_val})
+
+    return result
+
+
+def calculate_support_resistance(candles, window=15, num_levels=2):
+    """Find key support & resistance levels based on local extrema in candle history."""
+    if len(candles) < window * 2:
+        return [], []
+
+    highs = [c["high"] for c in candles]
+    lows = [c["low"] for c in candles]
+
+    res_levels = []
+    sup_levels = []
+
+    for i in range(window, len(candles) - window):
+        curr_high = highs[i]
+        curr_low = lows[i]
+
+        if all(curr_high >= highs[j] for j in range(i - window, i + window + 1)):
+            res_levels.append(curr_high)
+
+        if all(curr_low <= lows[j] for j in range(i - window, i + window + 1)):
+            sup_levels.append(curr_low)
+
+    current_price = candles[-1]["close"]
+
+    res_levels = sorted(list(set(round(r, 2) for r in res_levels)))
+    sup_levels = sorted(list(set(round(s, 2) for s in sup_levels)))
+
+    resistances = [r for r in res_levels if r > current_price]
+    supports = [s for s in sup_levels if s < current_price]
+
+    resistances = resistances[:num_levels]
+    supports = supports[-num_levels:]
+
+    return supports, resistances
+
+
+def get_trend(candles_m15, candles_h1):
     """
-    Multi-timeframe trend detection using H1 + H4 last candle structure.
+    Multi-timeframe trend detection using M15 + H1 last candle structure.
     Returns: "BUY", "SELL", or "NEUTRAL"
     """
     def _bias(candles):
         if len(candles) < 5:
             return "NEUTRAL"
-        # Simple structure: compare last 5 candle highs & lows
         recent = candles[-5:]
         bullish = sum(1 for c in recent if c["is_bullish"])
         if bullish >= 4:
@@ -99,34 +222,43 @@ def get_trend(candles_h1, candles_h4):
             return "SELL"
         return "NEUTRAL"
 
+    m15_bias = _bias(candles_m15)
     h1_bias = _bias(candles_h1)
-    h4_bias = _bias(candles_h4)
 
-    if h1_bias == "BUY"  and h4_bias == "BUY":  return "BUY"
-    if h1_bias == "SELL" and h4_bias == "SELL": return "SELL"
-    # Partial alignment
-    if h4_bias == "BUY":  return "BUY"
-    if h4_bias == "SELL": return "SELL"
+    if m15_bias == "BUY" and h1_bias == "BUY":
+        return "BUY"
+    if m15_bias == "SELL" and h1_bias == "SELL":
+        return "SELL"
     return "NEUTRAL"
 
 
-def check_m1_entry(candles_m1, rsi_vals, adx_vals, trend):
+def check_m1_entry(candles_m1, rsi_vals, adx_vals, ema9_vals, ema21_vals, vwap_vals, trend):
     """
-    Entry filter on M1 using RSI + ADX + trend alignment.
+    Entry filter on M1 using RSI + ADX + EMA Cross + VWAP + trend alignment.
     Returns: "BUY", "SELL", or None
     """
-    if not candles_m1 or len(rsi_vals) < 2 or len(adx_vals) < 2:
+    if not candles_m1 or len(rsi_vals) < 2 or len(adx_vals) < 2 or len(ema9_vals) < 2 or len(ema21_vals) < 2 or len(vwap_vals) < 2:
         return None
 
+    last_close = candles_m1[-1]["close"]
     last_rsi = rsi_vals[-1]["value"]
     last_adx = adx_vals[-1]["value"]
+    last_ema9 = ema9_vals[-1]["value"]
+    last_ema21 = ema21_vals[-1]["value"]
+    last_vwap = vwap_vals[-1]["value"]
 
     trend_strong = last_adx >= 20          # trend is meaningful
-    momentum_buy  = last_rsi > 50 and last_rsi < 70   # not overbought
-    momentum_sell = last_rsi < 50 and last_rsi > 30   # not oversold
+    above_vwap = last_close > last_vwap
+    below_vwap = last_close < last_vwap
+    ema_bullish = last_ema9 > last_ema21
+    ema_bearish = last_ema9 < last_ema21
+    rsi_buy = last_rsi > 50 and last_rsi < 70
+    rsi_sell = last_rsi < 50 and last_rsi > 30
 
-    if trend == "BUY"  and trend_strong and momentum_buy:  return "BUY"
-    if trend == "SELL" and trend_strong and momentum_sell: return "SELL"
+    if trend == "BUY" and trend_strong and above_vwap and ema_bullish and rsi_buy:
+        return "BUY"
+    if trend == "SELL" and trend_strong and below_vwap and ema_bearish and rsi_sell:
+        return "SELL"
     return None
 
 
@@ -147,6 +279,7 @@ class TradingStationState:
         # OHLC candle histories
         self.candles_m1 = []
         self.candles_m5 = []
+        self.candles_m15 = []
         self.candles_h1 = []
         self.candles_h4 = []
 
@@ -253,40 +386,48 @@ class TradingStationState:
 
     # ------------------------------------------------------------------
     def _try_generate_signal(self, price):
-        """Generate a signal using M1 entry + H1/H4 trend confirmation."""
+        """Generate a signal using M1 entry + M15/H1 trend confirmation + ADX + VWAP + EMA + RSI."""
         if not self.candles_m1 or len(self.candles_m1) < 30:
             self.signal_reason = "Waiting for M1 candle data..."
+            return
+
+        if not self.candles_m15 or len(self.candles_m15) < 10:
+            self.signal_reason = "Waiting for M15 candle data..."
+            return
+
+        if not self.candles_h1 or len(self.candles_h1) < 10:
+            self.signal_reason = "Waiting for H1 candle data..."
             return
 
         # Compute indicators on M1
         rsi_vals = calculate_rsi(self.candles_m1, 14)
         adx_vals = calculate_adx(self.candles_m1, 14)
+        ema9_vals = calculate_ema(self.candles_m1, 9)
+        ema21_vals = calculate_ema(self.candles_m1, 21)
+        vwap_vals = calculate_vwap(self.candles_m1)
 
-        # Multi-TF trend
-        trend = get_trend(self.candles_h1, self.candles_h4)
+        # Multi-TF trend (M15 and H1)
+        trend = get_trend(self.candles_m15, self.candles_h1)
 
         if trend == "NEUTRAL":
-            self.signal_reason = "H1/H4 trend: NEUTRAL — waiting for alignment..."
+            self.signal_reason = "M15/H1 trend: NEUTRAL (not aligned) — scanning..."
             return
 
         # M1 entry filter
-        direction = check_m1_entry(self.candles_m1, rsi_vals, adx_vals, trend)
+        direction = check_m1_entry(self.candles_m1, rsi_vals, adx_vals, ema9_vals, ema21_vals, vwap_vals, trend)
         if not direction:
             last_rsi = rsi_vals[-1]["value"] if rsi_vals else 50
             last_adx = adx_vals[-1]["value"] if adx_vals else 0
             self.signal_reason = (
-                f"Waiting: M1 RSI={last_rsi:.1f}, ADX={last_adx:.1f}, "
-                f"Trend={trend}"
+                f"Scanning: M1 RSI={last_rsi:.1f}, ADX={last_adx:.1f}, "
+                f"Trend(M15/H1)={trend} | Waiting for VWAP/EMA/RSI triggers"
             )
             return
 
         # Risk management — ATR-based SL/TP from M1
-        if len(self.candles_m1) >= 14:
-            atr = sum(
-                c["high"] - c["low"]
-                for c in self.candles_m1[-14:]
-            ) / 14
-        else:
+        atr_vals = calculate_atr(self.candles_m1, 14)
+        atr = atr_vals[-1]["value"] if atr_vals else 0.5
+        if atr <= 0.01:
             atr = 0.5
 
         sl_dist = max(round(atr * 1.5, 2), 0.30)
@@ -309,8 +450,8 @@ class TradingStationState:
         self.signal_tp         = tp
         self.signal_confidence = conf
         self.signal_reason     = (
-            f"{'H1+H4 Uptrend' if direction=='BUY' else 'H1+H4 Downtrend'} | "
-            f"M1 RSI={last_rsi:.1f} | ADX={last_adx:.1f} | RR 1:2"
+            f"{'M15+H1 Uptrend' if direction=='BUY' else 'M15+H1 Downtrend'} | "
+            f"M1 RSI={last_rsi:.1f} | ADX={last_adx:.1f} | VWAP/EMA aligned | RR 1:2.0"
         )
         self.position_entry  = round(price, 2)
         self.position_active = True
@@ -322,7 +463,7 @@ class TradingStationState:
             setattr(self, attr, list(candles_list))
 
     # ------------------------------------------------------------------
-    def get_serializable_state(self, calendar_events):
+    def get_serializable_state(self):
         with self.lock:
             price = self.last_price or 0.0
 
@@ -338,18 +479,59 @@ class TradingStationState:
             total_closed = self.total_wins + self.total_losses
             win_rate = (self.total_wins / total_closed * 100) if total_closed > 0 else 0.0
 
-            # Indicators (computed from live candle arrays)
+            # Indicators & overlays (computed from live candle arrays)
             rsi_m1 = calculate_rsi(self.candles_m1)
             adx_m1 = calculate_adx(self.candles_m1)
+            ema9_m1 = calculate_ema(self.candles_m1, 9)
+            ema21_m1 = calculate_ema(self.candles_m1, 21)
+            vwap_m1 = calculate_vwap(self.candles_m1)
+            sup_m1, res_m1 = calculate_support_resistance(self.candles_m1)
+            atr_m1_list = calculate_atr(self.candles_m1)
+            atr_m1 = atr_m1_list[-1]["value"] if atr_m1_list else 0.0
+
             rsi_m5 = calculate_rsi(self.candles_m5)
             adx_m5 = calculate_adx(self.candles_m5)
+            ema9_m5 = calculate_ema(self.candles_m5, 9)
+            ema21_m5 = calculate_ema(self.candles_m5, 21)
+            vwap_m5 = calculate_vwap(self.candles_m5)
+            sup_m5, res_m5 = calculate_support_resistance(self.candles_m5)
+            atr_m5_list = calculate_atr(self.candles_m5)
+            atr_m5 = atr_m5_list[-1]["value"] if atr_m5_list else 0.0
+
+            rsi_m15 = calculate_rsi(self.candles_m15)
+            adx_m15 = calculate_adx(self.candles_m15)
+            ema9_m15 = calculate_ema(self.candles_m15, 9)
+            ema21_m15 = calculate_ema(self.candles_m15, 21)
+            vwap_m15 = calculate_vwap(self.candles_m15)
+            sup_m15, res_m15 = calculate_support_resistance(self.candles_m15)
+            atr_m15_list = calculate_atr(self.candles_m15)
+            atr_m15 = atr_m15_list[-1]["value"] if atr_m15_list else 0.0
+
             rsi_h1 = calculate_rsi(self.candles_h1)
             adx_h1 = calculate_adx(self.candles_h1)
+            ema9_h1 = calculate_ema(self.candles_h1, 9)
+            ema21_h1 = calculate_ema(self.candles_h1, 21)
+            vwap_h1 = calculate_vwap(self.candles_h1)
+            sup_h1, res_h1 = calculate_support_resistance(self.candles_h1)
+            atr_h1_list = calculate_atr(self.candles_h1)
+            atr_h1 = atr_h1_list[-1]["value"] if atr_h1_list else 0.0
+
             rsi_h4 = calculate_rsi(self.candles_h4)
             adx_h4 = calculate_adx(self.candles_h4)
+            ema9_h4 = calculate_ema(self.candles_h4, 9)
+            ema21_h4 = calculate_ema(self.candles_h4, 21)
+            vwap_h4 = calculate_vwap(self.candles_h4)
+            sup_h4, res_h4 = calculate_support_resistance(self.candles_h4)
+            atr_h4_list = calculate_atr(self.candles_h4)
+            atr_h4 = atr_h4_list[-1]["value"] if atr_h4_list else 0.0
 
-            # Trend for display
-            trend = get_trend(self.candles_h1, self.candles_h4)
+            # Trend for display (M15 and H1)
+            trend = get_trend(self.candles_m15, self.candles_h1)
+
+            # Calculate active dynamic RR Ratio
+            rr_ratio = 2.0
+            if self.position_active and self.signal_sl != self.signal_entry:
+                rr_ratio = round(abs(self.signal_tp - self.signal_entry) / abs(self.signal_entry - self.signal_sl), 1)
 
             return {
                 "last_price":     self.last_price,
@@ -372,12 +554,14 @@ class TradingStationState:
                      "change": "0.00%", "direction": "■", "color": "white"}
                 ],
 
-                "candles_m1": self.candles_m1,  "rsi_m1": rsi_m1, "adx_m1": adx_m1,
-                "candles_m5": self.candles_m5,  "rsi_m5": rsi_m5, "adx_m5": adx_m5,
-                "candles_h1": self.candles_h1,  "rsi_h1": rsi_h1, "adx_h1": adx_h1,
-                "candles_h4": self.candles_h4,  "rsi_h4": rsi_h4, "adx_h4": adx_h4,
+                "candles_m1": self.candles_m1,  "rsi_m1": rsi_m1, "adx_m1": adx_m1, "ema9_m1": ema9_m1, "ema21_m1": ema21_m1, "vwap_m1": vwap_m1, "sup_m1": sup_m1, "res_m1": res_m1, "atr_m1": atr_m1,
+                "candles_m5": self.candles_m5,  "rsi_m5": rsi_m5, "adx_m5": adx_m5, "ema9_m5": ema9_m5, "ema21_m5": ema21_m5, "vwap_m5": vwap_m5, "sup_m5": sup_m5, "res_m5": res_m5, "atr_m5": atr_m5,
+                "candles_m15": self.candles_m15, "rsi_m15": rsi_m15, "adx_m15": adx_m15, "ema9_m15": ema9_m15, "ema21_m15": ema21_m15, "vwap_m15": vwap_m15, "sup_m15": sup_m15, "res_m15": res_m15, "atr_m15": atr_m15,
+                "candles_h1": self.candles_h1,  "rsi_h1": rsi_h1, "adx_h1": adx_h1, "ema9_h1": ema9_h1, "ema21_h1": ema21_h1, "vwap_h1": vwap_h1, "sup_h1": sup_h1, "res_h1": res_h1, "atr_h1": atr_h1,
+                "candles_h4": self.candles_h4,  "rsi_h4": rsi_h4, "adx_h4": adx_h4, "ema9_h4": ema9_h4, "ema21_h4": ema21_h4, "vwap_h4": vwap_h4, "sup_h4": sup_h4, "res_h4": res_h4, "atr_h4": atr_h4,
 
                 "market_trend": trend,
+                "rr_ratio": rr_ratio,
 
                 "signal": {
                     "active":      self.position_active,
@@ -407,45 +591,8 @@ class TradingStationState:
                     "win_rate":     f"{win_rate:.1f}%"
                 },
 
-                "trade_history": list(reversed(self.trade_history)),
-                "calendar":      calendar_events
+                "trade_history": list(reversed(self.trade_history))
             }
 
 
-# =====================================================================
-# ECONOMIC CALENDAR
-# =====================================================================
-
-class EconomicCalendar:
-    def __init__(self):
-        self.init_time = datetime.now()
-        self.events = [
-            {"name": "US Core CPI (YoY)",          "offset_minutes": 15,  "forecast": "BULLISH", "volatility": "VERY HIGH"},
-            {"name": "US Non-Farm Payrolls (NFP)",  "offset_minutes": 45,  "forecast": "BEARISH", "volatility": "CRITICAL"},
-            {"name": "FOMC Interest Rate Decision", "offset_minutes": 120, "forecast": "BULLISH", "volatility": "CRITICAL"},
-            {"name": "US GDP Growth Rate (QoQ)",    "offset_minutes": 240, "forecast": "BULLISH", "volatility": "HIGH"},
-            {"name": "Initial Jobless Claims",      "offset_minutes": 480, "forecast": "BEARISH", "volatility": "HIGH"},
-        ]
-
-    def get_upcoming_events(self):
-        now = datetime.now()
-        result = []
-        for e in self.events:
-            et = self.init_time + timedelta(minutes=e["offset_minutes"])
-            if now > et + timedelta(minutes=1):
-                e["offset_minutes"] += 600
-                et = self.init_time + timedelta(minutes=e["offset_minutes"])
-            diff = int((et - now).total_seconds())
-            if diff < 0:
-                cd = "RELEASING..."
-            else:
-                cd = f"{diff//3600:02d}h {(diff%3600)//60:02d}m {diff%60:02d}s"
-            result.append({
-                "name": e["name"], "time": et.strftime("%H:%M:%S"),
-                "countdown": cd, "forecast": e["forecast"], "volatility": e["volatility"]
-            })
-        return result
-
-
-state    = TradingStationState()
-calendar = EconomicCalendar()
+state = TradingStationState()

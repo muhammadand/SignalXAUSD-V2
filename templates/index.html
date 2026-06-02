@@ -162,11 +162,27 @@
                             class="tf-btn active-tf px-2.5 py-1 text-[11px] font-bold font-mono rounded border transition-all cursor-pointer">1m</button>
                         <button data-tf="M5"
                             class="tf-btn px-2.5 py-1 text-[11px] font-bold font-mono rounded border border-white/10 text-gray-400 transition-all cursor-pointer">5m</button>
+                        <button data-tf="M15"
+                            class="tf-btn px-2.5 py-1 text-[11px] font-bold font-mono rounded border border-white/10 text-gray-400 transition-all cursor-pointer">15m</button>
                         <button data-tf="H1"
                             class="tf-btn px-2.5 py-1 text-[11px] font-bold font-mono rounded border border-white/10 text-gray-400 transition-all cursor-pointer">H1</button>
                         <button data-tf="H4"
                             class="tf-btn px-2.5 py-1 text-[11px] font-bold font-mono rounded border border-white/10 text-gray-400 transition-all cursor-pointer">H4</button>
                     </div>
+                </div>
+                <!-- Dynamic Scalper Metrics Bar -->
+                <div
+                    class="flex flex-wrap gap-4 items-center bg-white/[0.02] border border-white/[0.05] rounded-lg px-3 py-2 text-xs font-mono">
+                    <div class="flex items-center gap-1.5"><span class="text-gray-400">ATR(14):</span> <span
+                            id="val-atr" class="text-amber-400 font-bold">—</span></div>
+                    <div class="flex items-center gap-1.5"><span class="text-gray-400">VWAP:</span> <span id="val-vwap"
+                            class="text-cyan-400 font-bold">—</span></div>
+                    <div class="flex items-center gap-1.5"><span class="text-gray-400">EMA9:</span> <span id="val-ema9"
+                            class="text-amber-300 font-bold">—</span></div>
+                    <div class="flex items-center gap-1.5"><span class="text-gray-400">EMA21:</span> <span
+                            id="val-ema21" class="text-rose-400 font-bold">—</span></div>
+                    <div class="flex items-center gap-1.5"><span class="text-gray-400">RR Ratio:</span> <span
+                            id="val-rr" class="text-emerald-400 font-bold">—</span></div>
                 </div>
                 <!-- Main candlestick chart -->
                 <div id="chart-price" class="w-full flex-grow min-h-[280px] rounded-lg overflow-hidden"></div>
@@ -216,6 +232,8 @@
                             class="text-right font-bold text-rose-500">—</span>
                         <span class="text-blue-400/70">TP:</span> <span id="signal-tp"
                             class="text-right font-bold text-blue-400">—</span>
+                        <span class="text-gray-500">RR RATIO:</span> <span id="signal-rr"
+                            class="text-right font-bold text-emerald-400">—</span>
                     </div>
                     <div class="h-px bg-white/[0.04]"></div>
                     <!-- Confidence bar -->
@@ -240,6 +258,8 @@
                         <span class="text-gray-500">MARKET:</span> <span id="pos-market"
                             class="text-right text-white font-bold">—</span>
                         <span class="text-gray-500">PNL:</span> <span id="pos-pnl" class="text-right font-bold">—</span>
+                        <span class="text-gray-500">RR RATIO:</span> <span id="pos-rr"
+                            class="text-right font-semibold text-emerald-400">—</span>
                         <span class="text-gray-500">STATUS:</span> <span id="pos-status"
                             class="text-right font-semibold text-gray-400">—</span>
                     </div>
@@ -248,9 +268,9 @@
         </div>
 
         <!-- ═══════════════════════════════════════════════════════
-         BOTTOM: Trade History | Economic Calendar
+         BOTTOM: Trade History
          ═══════════════════════════════════════════════════════ -->
-        <div class="grid grid-cols-1 xl:grid-cols-[1fr_1.6fr] gap-4">
+        <div class="grid grid-cols-1 gap-4">
 
             <!-- Trade History -->
             <section class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4">
@@ -272,31 +292,6 @@
                         <tbody id="history-body" class="divide-y divide-white/[0.03]">
                             <tr>
                                 <td colspan="6" class="py-4 text-center text-gray-600 italic">No trades yet...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- Economic Calendar -->
-            <section class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4">
-                <h2
-                    class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-400 font-mono border-b border-white/[0.06] pb-2 mb-3">
-                    📅 Economic Calendar (XAU/USD)</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-[11px] font-mono border-collapse">
-                        <thead>
-                            <tr class="text-gray-500 uppercase border-b border-white/[0.05]">
-                                <th class="pb-1.5 text-left">Event</th>
-                                <th class="pb-1.5 text-center">Time</th>
-                                <th class="pb-1.5 text-center">Countdown</th>
-                                <th class="pb-1.5 text-center">Forecast</th>
-                                <th class="pb-1.5 text-center">Impact</th>
-                            </tr>
-                        </thead>
-                        <tbody id="calendar-body" class="divide-y divide-white/[0.03]">
-                            <tr>
-                                <td colspan="5" class="py-4 text-center text-gray-600 italic">Loading...</td>
                             </tr>
                         </tbody>
                     </table>

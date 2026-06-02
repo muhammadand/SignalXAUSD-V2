@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let chartAdx = null, adxSeries = null;
     let syncing = false;   // prevent scroll-sync recursion
 
+    let ema9Series = null, ema21Series = null, vwapSeries = null;
+    let supportLines = [], resistanceLines = [];
+
     /* ── DOM refs ── */
     const $ = id => document.getElementById(id);
     const localClock = $('local-clock');
@@ -31,7 +34,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const trendBadge = $('trend-badge');
     const watchlistEl = $('watchlist-container');
     const historyBody = $('history-body');
-    const calendarBody = $('calendar-body');
     const signalBadge = $('signal-badge');
     const signalEntry = $('signal-entry');
     const signalSl = $('signal-sl');
@@ -92,6 +94,25 @@ document.addEventListener('DOMContentLoaded', () => {
             upColor: '#10b981', downColor: '#f43f5e',
             borderUpColor: '#10b981', borderDownColor: '#f43f5e',
             wickUpColor: '#10b981', wickDownColor: '#f43f5e',
+        });
+
+        ema9Series = chartPrice.addSeries(LightweightCharts.LineSeries, {
+            color: '#fbbf24',
+            lineWidth: 1.5,
+            priceLineVisible: false,
+            title: 'EMA 9'
+        });
+        ema21Series = chartPrice.addSeries(LightweightCharts.LineSeries, {
+            color: '#f43f5e',
+            lineWidth: 1.5,
+            priceLineVisible: false,
+            title: 'EMA 21'
+        });
+        vwapSeries = chartPrice.addSeries(LightweightCharts.LineSeries, {
+            color: '#06b6d4',
+            lineWidth: 1.5,
+            priceLineVisible: false,
+            title: 'VWAP'
         });
 
         /* ── RSI chart ── */
@@ -173,13 +194,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const candles = data[`candles_${tf}`] || [];
         const rsiData = data[`rsi_${tf}`] || [];
         const adxData = data[`adx_${tf}`] || [];
+        const ema9Data = data[`ema9_${tf}`] || [];
+        const ema21Data = data[`ema21_${tf}`] || [];
+        const vwapData = data[`vwap_${tf}`] || [];
+        const supports = data[`sup_${tf}`] || [];
+        const resistances = data[`res_${tf}`] || [];
 
         const chartCandles = toChartCandles(candles);
         const rsiLine = toLineData(rsiData);
         const adxLine = toLineData(adxData);
+        const ema9Line = toLineData(ema9Data);
+        const ema21Line = toLineData(ema21Data);
+        const vwapLine = toLineData(vwapData);
 
         if (candleSeries && chartCandles.length) {
             try { candleSeries.setData(chartCandles); } catch (e) { }
+        }
+        if (ema9Series && ema9Line.length) {
+            try { ema9Series.setData(ema9Line); } catch (e) { }
+        }
+        if (ema21Series && ema21Line.length) {
+            try { ema21Series.setData(ema21Line); } catch (e) { }
+        }
+        if (vwapSeries && vwapLine.length) {
+            try { vwapSeries.setData(vwapLine); } catch (e) { }
         }
         if (rsiSeries && rsiLine.length) {
             try {
@@ -194,6 +232,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (window._adxRef) window._adxRef.setData(makeFlatLine(adxLine, 25));
             } catch (e) { }
         }
+
+        // Draw Support/Resistance price lines
+        if (candleSeries) {
+            supportLines.forEach(line => { try { candleSeries.removePriceLine(line); } catch (e) { } });
+            supportLines = [];
+            resistanceLines.forEach(line => { try { candleSeries.removePriceLine(line); } catch (e) { } });
+            resistanceLines = [];
+
+            supports.forEach((price, idx) => {
+                const line = candleSeries.createPriceLine({
+                    price: parseFloat(price),
+                    color: '#10b981',
+                    lineWidth: 1,
+                    lineStyle: 2, // dotted
+                    axisLabelVisible: true,
+                    title: `SUP ${idx + 1}`
+                });
+                supportLines.push(line);
+            });
+
+            resistances.forEach((price, idx) => {
+                const line = candleSeries.createPriceLine({
+                    price: parseFloat(price),
+                    color: '#f43f5e',
+                    lineWidth: 1,
+                    lineStyle: 2, // dotted
+                    axisLabelVisible: true,
+                    title: `RES ${idx + 1}`
+                });
+                resistanceLines.push(line);
+            });
+        }
+
+        // Update indicators metrics panel
+        updateMetricsBar(data);
 
         /* ── TP / SL price lines ── */
         const sig = data.signal || {};
@@ -231,9 +304,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /* ════════════════════════════════════════════════
-       DOM UPDATES
-    ════════════════════════════════════════════════ */
+    /* ─── DOM UPDATES ─── */
+    function updateMetricsBar(data) {
+        const tf = activeTF.toLowerCase();
+        
+        // ATR
+        const atrVal = data[`atr_${tf}`];
+        const atrEl = $('val-atr');
+        if (atrEl) atrEl.textContent = atrVal !== undefined && atrVal !== null ? parseFloat(atrVal).toFixed(2) : '—';
+        
+        // VWAP
+        const vwapData = data[`vwap_${tf}`] || [];
+        const vwapEl = $('val-vwap');
+        if (vwapEl) {
+            const lastVwap = vwapData.length ? vwapData[vwapData.length - 1].value : null;
+            vwapEl.textContent = lastVwap !== null ? lastVwap.toFixed(2) : '—';
+        }
+        
+        // EMA9
+        const ema9Data = data[`ema9_${tf}`] || [];
+        const ema9El = $('val-ema9');
+        if (ema9El) {
+            const lastEma9 = ema9Data.length ? ema9Data[ema9Data.length - 1].value : null;
+            ema9El.textContent = lastEma9 !== null ? lastEma9.toFixed(2) : '—';
+        }
+        
+        // EMA21
+        const ema21Data = data[`ema21_${tf}`] || [];
+        const ema21El = $('val-ema21');
+        if (ema21El) {
+            const lastEma21 = ema21Data.length ? ema21Data[ema21Data.length - 1].value : null;
+            ema21El.textContent = lastEma21 !== null ? lastEma21.toFixed(2) : '—';
+        }
+        
+        // RR Ratio
+        const rrVal = data.rr_ratio;
+        const rrEl = $('val-rr');
+        if (rrEl) rrEl.textContent = rrVal !== undefined && rrVal !== null ? `1:${parseFloat(rrVal).toFixed(1)}` : '—';
+    }
+
     function updateSignalPanel(data) {
         const sig = data.signal || {};
         const active = sig.active && sig.type !== 'NONE';
@@ -249,6 +358,8 @@ document.addEventListener('DOMContentLoaded', () => {
             signalEntry.textContent = sig.entry;
             signalSl.textContent = sig.sl;
             signalTp.textContent = sig.tp;
+            const sigRrEl = $('signal-rr');
+            if (sigRrEl) sigRrEl.textContent = `1:${parseFloat(data.rr_ratio).toFixed(1)}`;
             confVal.textContent = `${sig.confidence}%`;
             confBar.style.width = `${sig.confidence}%`;
             confBar.className = `h-full rounded-full transition-all duration-500 ${isBuy
@@ -258,6 +369,8 @@ document.addEventListener('DOMContentLoaded', () => {
             signalBadge.textContent = 'SCANNING';
             signalBadge.className = 'px-3 py-0.5 text-[11px] font-black font-mono rounded border border-amber-500/40 text-amber-400 bg-amber-500/10';
             signalEntry.textContent = signalSl.textContent = signalTp.textContent = '—';
+            const sigRrEl = $('signal-rr');
+            if (sigRrEl) sigRrEl.textContent = '—';
             confVal.textContent = '—'; confBar.style.width = '0%';
         }
     }
@@ -269,6 +382,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const pnlColor = p.pnl_color === 'green' ? 'text-emerald-400' : 'text-rose-500';
         posPnl.textContent = p.pnl || '—';
         posPnl.className = `text-right font-bold ${pnlColor}`;
+        const posRrEl = $('pos-rr');
+        if (posRrEl) posRrEl.textContent = p.active ? `1:${parseFloat(data.rr_ratio).toFixed(1)}` : '—';
         posStatus.textContent = p.status || '—';
         posStatus.className = `text-right font-semibold ${p.active ? 'text-emerald-400' : 'text-gray-500'}`;
     }
@@ -320,24 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateCalendar(data) {
-        const events = data.calendar || [];
-        calendarBody.innerHTML = '';
-        events.forEach(e => {
-            const isBullish = e.forecast === 'BULLISH';
-            const isCrit = e.volatility === 'CRITICAL';
-            const volCls = isCrit ? 'text-rose-500 font-bold' : e.volatility === 'VERY HIGH' ? 'text-orange-400' : 'text-amber-400';
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-white/[0.015] transition-colors border-b border-white/[0.03]';
-            tr.innerHTML = `
-                <td class="py-2 text-gray-300">${e.name}</td>
-                <td class="py-2 text-center text-gray-400">${e.time}</td>
-                <td class="py-2 text-center text-cyan-400 font-semibold">${e.countdown}</td>
-                <td class="py-2 text-center font-bold ${isBullish ? 'text-emerald-400' : 'text-rose-500'}">${e.forecast} ${isBullish ? '▲' : '▼'}</td>
-                <td class="py-2 text-center ${volCls}">${e.volatility}</td>`;
-            calendarBody.appendChild(tr);
-        });
-    }
+
 
     function updateTrendBadge(data) {
         const trend = data.market_trend || 'NEUTRAL';
@@ -399,7 +497,6 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStats(data);
             updateHistory(data);
             updateWatchlist(data);
-            updateCalendar(data);
             updateTrendBadge(data);
 
         } catch (err) {

@@ -5,7 +5,7 @@ import threading
 from dotenv import load_dotenv
 from flask import Flask, render_template, jsonify
 
-from state_manager import state, calendar
+from state_manager import state
 
 load_dotenv()
 
@@ -15,6 +15,7 @@ SYMBOL = os.getenv("SYMBOL", "frxXAUUSD")
 TIMEFRAME_MAP = {
     60:    "M1",
     300:   "M5",
+    900:   "M15",
     3600:  "H1",
     14400: "H4"
 }
@@ -22,6 +23,7 @@ TIMEFRAME_MAP = {
 MAX_COUNT = {
     "M1": 200,
     "M5": 200,
+    "M15": 200,
     "H1": 200,
     "H4": 100
 }
@@ -39,7 +41,7 @@ async def deriv_ws_loop():
                 await ws.send(json.dumps({"ticks": SYMBOL, "subscribe": 1}))
 
                 # Subscribe candles for each timeframe
-                for granularity, count in [(60, 200), (300, 200), (3600, 200), (14400, 100)]:
+                for granularity, count in [(60, 200), (300, 200), (900, 200), (3600, 200), (14400, 100)]:
                     await ws.send(json.dumps({
                         "ticks_history": SYMBOL,
                         "style": "candles",
@@ -124,7 +126,7 @@ def index():
 
 @app.route("/api/state")
 def get_state():
-    return jsonify(state.get_serializable_state(calendar.get_upcoming_events()))
+    return jsonify(state.get_serializable_state())
 
 
 if __name__ == "__main__":
