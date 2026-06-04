@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ── State ── */
     let activeTF = 'M1';
     let allData = {};
+    let currentTradePage = 1;
+    let totalTradeCount = -1;
     let chartPrice = null, candleSeries = null, tpLine = null, slLine = null;
     let chartRsi = null, rsiSeries = null;
     let chartAdx = null, adxSeries = null;
@@ -115,50 +117,11 @@ document.addEventListener('DOMContentLoaded', () => {
             title: 'VWAP'
         });
 
-        /* ── RSI chart ── */
-        const rsiEl = $('chart-rsi');
-        chartRsi = LightweightCharts.createChart(rsiEl, baseChartOpts(90));
-        chartRsi.applyOptions({ rightPriceScale: { scaleMargins: { top: 0.05, bottom: 0.05 } } });
-        rsiSeries = chartRsi.addSeries(LightweightCharts.LineSeries, { color: '#a78bfa', lineWidth: 1.5, priceLineVisible: false });
-
-        // RSI reference lines (drawn as separate line series)
-        const rsiOver = chartRsi.addSeries(LightweightCharts.LineSeries, { color: 'rgba(244,63,94,0.35)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, crosshairMarkerVisible: false });
-        const rsiUnder = chartRsi.addSeries(LightweightCharts.LineSeries, { color: 'rgba(16,185,129,0.35)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, crosshairMarkerVisible: false });
-        window._rsiOver = rsiOver;
-        window._rsiUnder = rsiUnder;
-
-        /* ── ADX chart ── */
-        const adxEl = $('chart-adx');
-        chartAdx = LightweightCharts.createChart(adxEl, baseChartOpts(80));
-        chartAdx.applyOptions({ rightPriceScale: { scaleMargins: { top: 0.05, bottom: 0.05 } } });
-        adxSeries = chartAdx.addSeries(LightweightCharts.LineSeries, { color: '#38bdf8', lineWidth: 1.5, priceLineVisible: false });
-
-        // ADX strength line at 25
-        const adxRef = chartAdx.addSeries(LightweightCharts.LineSeries, { color: 'rgba(245,158,11,0.4)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, crosshairMarkerVisible: false });
-        window._adxRef = adxRef;
-
         /* ── ResizeObserver (responsive) ── */
         const ro = new ResizeObserver(() => {
-            [priceEl, rsiEl, adxEl].forEach(el => {
-                const chart = el === priceEl ? chartPrice : el === rsiEl ? chartRsi : chartAdx;
-                if (chart && el.clientWidth > 0) chart.resize(el.clientWidth, el.clientHeight || chart.options().height);
-            });
+            if (chartPrice && priceEl.clientWidth > 0) chartPrice.resize(priceEl.clientWidth, priceEl.clientHeight || chartPrice.options().height);
         });
-        [priceEl, rsiEl, adxEl].forEach(el => ro.observe(el));
-
-        /* ── Synchronized scroll/zoom ── */
-        function syncTimeRange(source, targets) {
-            source.timeScale().subscribeVisibleTimeRangeChange(() => {
-                if (syncing) return;
-                syncing = true;
-                const range = source.timeScale().getVisibleRange();
-                if (range) targets.forEach(t => t.timeScale().setVisibleRange(range));
-                syncing = false;
-            });
-        }
-        syncTimeRange(chartPrice, [chartRsi, chartAdx]);
-        syncTimeRange(chartRsi, [chartPrice, chartAdx]);
-        syncTimeRange(chartAdx, [chartPrice, chartRsi]);
+        ro.observe(priceEl);
     }
 
     /* ════════════════════════════════════════════════
@@ -192,17 +155,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateCharts(data) {
         const tf = activeTF.toLowerCase();
         const candles = data[`candles_${tf}`] || [];
-        const rsiData = data[`rsi_${tf}`] || [];
-        const adxData = data[`adx_${tf}`] || [];
         const ema9Data = data[`ema9_${tf}`] || [];
         const ema21Data = data[`ema21_${tf}`] || [];
         const vwapData = data[`vwap_${tf}`] || [];
-        const supports = data[`sup_${tf}`] || [];
-        const resistances = data[`res_${tf}`] || [];
+
+        // AMD state
+        const amd = data.amd_info || {};
 
         const chartCandles = toChartCandles(candles);
-        const rsiLine = toLineData(rsiData);
-        const adxLine = toLineData(adxData);
         const ema9Line = toLineData(ema9Data);
         const ema21Line = toLineData(ema21Data);
         const vwapLine = toLineData(vwapData);
@@ -219,50 +179,58 @@ document.addEventListener('DOMContentLoaded', () => {
         if (vwapSeries && vwapLine.length) {
             try { vwapSeries.setData(vwapLine); } catch (e) { }
         }
-        if (rsiSeries && rsiLine.length) {
-            try {
-                rsiSeries.setData(rsiLine);
-                if (window._rsiOver) window._rsiOver.setData(makeFlatLine(rsiLine, 70));
-                if (window._rsiUnder) window._rsiUnder.setData(makeFlatLine(rsiLine, 30));
-            } catch (e) { }
-        }
-        if (adxSeries && adxLine.length) {
-            try {
-                adxSeries.setData(adxLine);
-                if (window._adxRef) window._adxRef.setData(makeFlatLine(adxLine, 25));
-            } catch (e) { }
-        }
 
-        // Draw Support/Resistance price lines
+        // Draw AMD Accumulation Box lines
         if (candleSeries) {
             supportLines.forEach(line => { try { candleSeries.removePriceLine(line); } catch (e) { } });
             supportLines = [];
             resistanceLines.forEach(line => { try { candleSeries.removePriceLine(line); } catch (e) { } });
             resistanceLines = [];
 
-            supports.forEach((price, idx) => {
-                const line = candleSeries.createPriceLine({
-                    price: parseFloat(price),
-                    color: '#10b981',
-                    lineWidth: 1,
-                    lineStyle: 2, // dotted
-                    axisLabelVisible: true,
-                    title: `SUP ${idx + 1}`
-                });
-                supportLines.push(line);
-            });
-
-            resistances.forEach((price, idx) => {
-                const line = candleSeries.createPriceLine({
-                    price: parseFloat(price),
+            if (amd.box_high && amd.box_low) {
+                const resLine = candleSeries.createPriceLine({
+                    price: parseFloat(amd.box_high),
                     color: '#f43f5e',
                     lineWidth: 1,
-                    lineStyle: 2, // dotted
+                    lineStyle: 2,
                     axisLabelVisible: true,
-                    title: `RES ${idx + 1}`
+                    title: 'AMD RES'
                 });
-                resistanceLines.push(line);
+                resistanceLines.push(resLine);
+
+                const supLine = candleSeries.createPriceLine({
+                    price: parseFloat(amd.box_low),
+                    color: '#10b981',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                    axisLabelVisible: true,
+                    title: 'AMD SUP'
+                });
+                supportLines.push(supLine);
+            }
+        }
+
+        // AMD Manipulation Markers
+        if (candleSeries && amd.manipulation_epoch) {
+            const markers = [];
+            const isBuy = data.signal && data.signal.type === 'BUY';
+            // Determine direction based on price vs box if signal is not set yet
+            let manipulationIsDown = isBuy;
+            if (!data.signal || data.signal.type === 'NONE') {
+                if (amd.vwap_target && amd.vwap_target < amd.box_high) {
+                    manipulationIsDown = true;
+                }
+            }
+            markers.push({
+                time: amd.manipulation_epoch,
+                position: manipulationIsDown ? 'belowBar' : 'aboveBar',
+                color: manipulationIsDown ? '#f43f5e' : '#10b981',
+                shape: manipulationIsDown ? 'arrowUp' : 'arrowDown',
+                text: 'Manipulation',
             });
+            try { candleSeries.setMarkers(markers); } catch (e) { }
+        } else if (candleSeries) {
+            try { candleSeries.setMarkers([]); } catch (e) { }
         }
 
         // Update indicators metrics panel
@@ -307,12 +275,12 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ─── DOM UPDATES ─── */
     function updateMetricsBar(data) {
         const tf = activeTF.toLowerCase();
-        
+
         // ATR
         const atrVal = data[`atr_${tf}`];
         const atrEl = $('val-atr');
         if (atrEl) atrEl.textContent = atrVal !== undefined && atrVal !== null ? parseFloat(atrVal).toFixed(2) : '—';
-        
+
         // VWAP
         const vwapData = data[`vwap_${tf}`] || [];
         const vwapEl = $('val-vwap');
@@ -320,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const lastVwap = vwapData.length ? vwapData[vwapData.length - 1].value : null;
             vwapEl.textContent = lastVwap !== null ? lastVwap.toFixed(2) : '—';
         }
-        
+
         // EMA9
         const ema9Data = data[`ema9_${tf}`] || [];
         const ema9El = $('val-ema9');
@@ -328,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const lastEma9 = ema9Data.length ? ema9Data[ema9Data.length - 1].value : null;
             ema9El.textContent = lastEma9 !== null ? lastEma9.toFixed(2) : '—';
         }
-        
+
         // EMA21
         const ema21Data = data[`ema21_${tf}`] || [];
         const ema21El = $('val-ema21');
@@ -336,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const lastEma21 = ema21Data.length ? ema21Data[ema21Data.length - 1].value : null;
             ema21El.textContent = lastEma21 !== null ? lastEma21.toFixed(2) : '—';
         }
-        
+
         // RR Ratio
         const rrVal = data.rr_ratio;
         const rrEl = $('val-rr');
@@ -399,18 +367,23 @@ document.addEventListener('DOMContentLoaded', () => {
         wrBar.style.width = `${Math.min(wr, 100)}%`;
     }
 
-    function updateHistory(data) {
-        const hist = data.trade_history || [];
-        if (!hist.length) return;
+    function renderTradeHistory(trades) {
+        if (!trades || !trades.length) {
+            historyBody.innerHTML = `<tr><td colspan="10" class="py-4 text-center text-gray-600 italic">No trades yet...</td></tr>`;
+            return;
+        }
         historyBody.innerHTML = '';
-        hist.forEach(t => {
+        trades.forEach(t => {
             const isWin = t.result === 'WIN';
             const pnlColor = parseFloat(t.pnl) >= 0 ? 'text-emerald-400' : 'text-rose-500';
             const tr = document.createElement('tr');
-            tr.className = 'hover:bg-white/[0.015] transition-colors';
+            tr.className = 'hover:bg-white/[0.015] transition-colors border-b border-white/[0.02]';
             tr.innerHTML = `
                 <td class="py-2 text-gray-400">${t.time}</td>
                 <td class="py-2 font-bold ${t.type === 'BUY' ? 'text-emerald-400' : 'text-rose-500'}">${t.type}</td>
+                <td class="py-2 text-gray-300 text-left">${t.pattern || 'EMA+RSI Scalper'}</td>
+                <td class="py-2 text-gray-300 text-left">${t.candle_pattern || 'None'}</td>
+                <td class="py-2 text-center text-amber-400 font-bold">${t.confidence ? t.confidence + '%' : '—'}</td>
                 <td class="py-2 text-right text-gray-300">${t.entry}</td>
                 <td class="py-2 text-right text-gray-300">${t.exit}</td>
                 <td class="py-2 text-right font-bold ${pnlColor}">${t.pnl}</td>
@@ -418,9 +391,49 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase ${isWin
                     ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                     : 'bg-rose-500/15 text-rose-500 border border-rose-500/30'}">${t.result}</span>
-                </td>`;
+                </td>
+                <td class="py-2 text-left pl-4 text-gray-400 text-[10px] max-w-[220px] truncate" title="${t.reason || ''}">${t.reason || 'N/A'}</td>`;
             historyBody.appendChild(tr);
         });
+    }
+
+    async function fetchTrades(page = 1) {
+        try {
+            const res = await fetch(`/api/trades?page=${page}&limit=10`);
+            if (!res.ok) throw new Error('API error');
+            const data = await res.json();
+
+            currentTradePage = data.page;
+            totalTradeCount = data.total_trades;
+
+            renderTradeHistory(data.trades);
+
+            const pagStart = $('pag-start');
+            const pagEnd = $('pag-end');
+            const pagTotal = $('pag-total');
+            const pagCurrent = $('pag-current');
+            const pagTotalPages = $('pag-total-pages');
+            const btnPrev = $('btn-prev');
+            const btnNext = $('btn-next');
+
+            if (pagStart && pagEnd && pagTotal && pagCurrent && pagTotalPages && btnPrev && btnNext) {
+                const total = data.total_trades;
+                const limit = data.limit;
+                const start = total === 0 ? 0 : (data.page - 1) * limit + 1;
+                const end = Math.min(data.page * limit, total);
+
+                pagStart.textContent = start;
+                pagEnd.textContent = end;
+                pagTotal.textContent = total;
+                pagCurrent.textContent = data.page;
+                pagTotalPages.textContent = data.total_pages;
+
+                btnPrev.disabled = (data.page <= 1);
+                btnNext.disabled = (data.page >= data.total_pages);
+            }
+        } catch (err) {
+            console.error('Failed to fetch trades:', err);
+        }
     }
 
     function updateWatchlist(data) {
@@ -464,8 +477,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (Object.keys(allData).length) updateCharts(allData);
             if (chartPrice) chartPrice.timeScale().fitContent();
-            if (chartRsi) chartRsi.timeScale().fitContent();
-            if (chartAdx) chartAdx.timeScale().fitContent();
         });
     });
 
@@ -495,7 +506,11 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSignalPanel(data);
             updatePortfolio(data);
             updateStats(data);
-            updateHistory(data);
+            // If total trades count changed on server, refresh the active page
+            const serverTotalTrades = data.stats ? data.stats.total_trades : 0;
+            if (serverTotalTrades !== totalTradeCount) {
+                fetchTrades(currentTradePage);
+            }
             updateWatchlist(data);
             updateTrendBadge(data);
 
@@ -507,6 +522,148 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* ── Boot ── */
     try { initCharts(); } catch (e) { console.error('Chart init failed:', e); }
+
+    // Pagination event listeners
+    const btnPrev = $('btn-prev');
+    const btnNext = $('btn-next');
+    if (btnPrev) {
+        btnPrev.addEventListener('click', () => {
+            if (currentTradePage > 1) {
+                fetchTrades(currentTradePage - 1);
+            }
+        });
+    }
+    if (btnNext) {
+        btnNext.addEventListener('click', () => {
+            fetchTrades(currentTradePage + 1);
+        });
+    }
+
+    fetchTrades(1);
     fetchState();
     setInterval(fetchState, 500);
+
+    /* ════════════════════════════════════════════════
+       ECONOMIC CALENDAR
+    ════════════════════════════════════════════════ */
+    async function fetchEconomicCalendar() {
+        const calBody = $('calendar-body');
+        if (!calBody) return;
+
+        try {
+            // Get current date
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+
+            // Format timezone offset (e.g., +07:00)
+            const tzo = -now.getTimezoneOffset();
+            const dif = tzo >= 0 ? '+' : '-';
+            const pad = (num) => String(Math.floor(Math.abs(num))).padStart(2, '0');
+            const tzString = dif + pad(tzo / 60) + ':' + pad(tzo % 60);
+
+            const startDate = `${year}-${month}-${day}T00:00:00.000${tzString}`;
+            const endDate = `${year}-${month}-${day}T23:59:59.999${tzString}`;
+
+            // Note: The endpoint provided by the user
+            const url = `https://endpoints.investing.com/pd-instruments/v1/calendars/economic/events/occurrences?domain_id=54&limit=200&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&country_ids=25,6,37,72,39,14,48,35,42,43,44,45,36,11,41,46,4,5,22,17,10,26,12,178`;
+
+            const res = await fetch(url, {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            if (!res.ok) throw new Error('API fetch failed with status ' + res.status);
+            const result = await res.json();
+
+            // Build event metadata lookup if 'events' array exists
+            const eventMeta = {};
+            if (result.events && Array.isArray(result.events)) {
+                result.events.forEach(e => {
+                    if (e.event_id) eventMeta[e.event_id] = e;
+                });
+            }
+
+            // The actual schedule is usually in 'data', fallback to 'events' if 'data' is missing
+            const occurrences = result.data || (Array.isArray(result) ? result : (result.events || []));
+
+            calBody.innerHTML = '';
+
+            if (!occurrences || !occurrences.length) {
+                calBody.innerHTML = '<tr><td colspan="7" class="py-4 text-center text-gray-600 italic">No economic events today</td></tr>';
+                return;
+            }
+
+            // Try to sort by time if possible
+            occurrences.sort((a, b) => {
+                const dateA = new Date(a.datetime || a.timestamp || a.date || a.time || 0);
+                const dateB = new Date(b.datetime || b.timestamp || b.date || b.time || 0);
+                return dateA - dateB;
+            });
+
+            occurrences.forEach(occ => {
+                const meta = (occ.event_id && eventMeta[occ.event_id]) ? eventMeta[occ.event_id] : occ;
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-white/[0.015] transition-colors';
+
+                // Extract fields dynamically
+                const rawTime = occ.datetime || occ.timestamp || occ.date || occ.time || meta.datetime || meta.time;
+                let timeStr = '—';
+                if (rawTime) {
+                    const d = new Date(rawTime);
+                    if (!isNaN(d.getTime())) {
+                        timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    } else if (typeof rawTime === 'string') {
+                        timeStr = rawTime.includes(' ') ? rawTime.split(' ')[1].substring(0, 5) : rawTime;
+                    }
+                }
+
+                const ctry = occ.currency || meta.currency || occ.country_code || (occ.country ? occ.country.code : '—') || '—';
+                const name = occ.event_translated || meta.event_translated || occ.short_name || meta.short_name || occ.name || meta.name || occ.title || meta.title || '—';
+
+                // Keep actual/forecast/prev as strings or numbers, handle nulls
+                const actual = occ.actual_formatted || (occ.actual !== null && occ.actual !== undefined ? occ.actual : '—');
+                const forecast = occ.forecast_formatted || (occ.forecast !== null && occ.forecast !== undefined ? occ.forecast : '—');
+                const prev = occ.previous_formatted || (occ.previous !== null && occ.previous !== undefined ? occ.previous : '—');
+
+                // Importance (low, medium, high or 1, 2, 3)
+                const impRaw = occ.importance || meta.importance || 1;
+                let impLevel = 1;
+                if (typeof impRaw === 'string') {
+                    if (impRaw.toLowerCase() === 'high') impLevel = 3;
+                    else if (impRaw.toLowerCase() === 'medium') impLevel = 2;
+                    else if (impRaw.toLowerCase() === 'low') impLevel = 1;
+                } else {
+                    impLevel = parseInt(impRaw) || 1;
+                }
+
+                let impStars = '';
+                let impColor = 'text-gray-500';
+                if (impLevel >= 3) { impStars = '★★★'; impColor = 'text-rose-500 font-bold glow-red'; }
+                else if (impLevel == 2) { impStars = '★★'; impColor = 'text-amber-400 glow-amber'; }
+                else { impStars = '★'; impColor = 'text-gray-500'; }
+
+                tr.innerHTML = `
+                    <td class="py-2 text-gray-400">${timeStr}</td>
+                    <td class="py-2 font-bold text-gray-300 uppercase">${ctry}</td>
+                    <td class="py-2 text-gray-200" title="${meta.description || ''}">${name}</td>
+                    <td class="py-2 text-center ${impColor}">${impStars}</td>
+                    <td class="py-2 text-right font-bold text-gray-100">${actual}</td>
+                    <td class="py-2 text-right text-gray-400">${forecast}</td>
+                    <td class="py-2 text-right text-gray-500">${prev}</td>
+                `;
+                calBody.appendChild(tr);
+            });
+
+        } catch (err) {
+            calBody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-rose-500 italic">Failed to load calendar data (CORS or Error)</td></tr>`;
+            console.error('Economic calendar fetch error:', err);
+        }
+    }
+
+    fetchEconomicCalendar();
+    setInterval(fetchEconomicCalendar, 5 * 60 * 1000); // refresh every 5m
+
 });

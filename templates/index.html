@@ -185,20 +185,7 @@
                             id="val-rr" class="text-emerald-400 font-bold">—</span></div>
                 </div>
                 <!-- Main candlestick chart -->
-                <div id="chart-price" class="w-full flex-grow min-h-[280px] rounded-lg overflow-hidden"></div>
-                <!-- RSI sub-chart -->
-                <div class="flex items-center gap-2 mt-1">
-                    <span
-                        class="text-[10px] font-bold font-mono text-purple-400 uppercase tracking-wider">RSI(14)</span>
-                    <span class="text-[10px] text-gray-500">— 70 overbought · 30 oversold</span>
-                </div>
-                <div id="chart-rsi" class="w-full h-[90px] rounded-lg overflow-hidden"></div>
-                <!-- ADX sub-chart -->
-                <div class="flex items-center gap-2">
-                    <span class="text-[10px] font-bold font-mono text-sky-400 uppercase tracking-wider">ADX(14)</span>
-                    <span class="text-[10px] text-gray-500">— 25+ trend is strong</span>
-                </div>
-                <div id="chart-adx" class="w-full h-[80px] rounded-lg overflow-hidden"></div>
+                <div id="chart-price" class="w-full flex-grow min-h-[400px] rounded-lg overflow-hidden"></div>
             </section>
 
             <!-- SIGNAL & ORDER PANEL -->
@@ -276,22 +263,77 @@
             <section class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4">
                 <h2
                     class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-400 font-mono border-b border-white/[0.06] pb-2 mb-3">
-                    📋 Trade History (Virtual Sim)</h2>
+                    Trade History (Virtual Sim)</h2>
                 <div class="overflow-x-auto">
                     <table class="w-full text-[11px] font-mono border-collapse">
                         <thead>
                             <tr class="text-gray-500 uppercase border-b border-white/[0.05]">
                                 <th class="pb-1.5 text-left">Time</th>
                                 <th class="pb-1.5 text-left">Dir</th>
+                                <th class="pb-1.5 text-left">Pattern</th>
+                                <th class="pb-1.5 text-left">Candle</th>
+                                <th class="pb-1.5 text-center">Conf</th>
                                 <th class="pb-1.5 text-right">Entry</th>
                                 <th class="pb-1.5 text-right">Exit</th>
                                 <th class="pb-1.5 text-right">PnL</th>
                                 <th class="pb-1.5 text-center">Result</th>
+                                <th class="pb-1.5 text-left pl-4">Reason</th>
                             </tr>
                         </thead>
                         <tbody id="history-body" class="divide-y divide-white/[0.03]">
                             <tr>
-                                <td colspan="6" class="py-4 text-center text-gray-600 italic">No trades yet...</td>
+                                <td colspan="10" class="py-4 text-center text-gray-600 italic">No trades yet...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Pagination Controls -->
+                <div
+                    class="flex justify-between items-center mt-3 pt-3 border-t border-white/[0.06] text-[11px] font-mono">
+                    <div class="text-gray-500">
+                        Showing <span id="pag-start" class="text-gray-300 font-bold">0</span> to <span id="pag-end"
+                            class="text-gray-300 font-bold">0</span> of <span id="pag-total"
+                            class="text-gray-300 font-bold">0</span> trades
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-prev"
+                            class="px-3 py-1 bg-white/[0.03] border border-white/[0.08] hover:bg-white/[0.08] text-gray-300 rounded cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            disabled>
+                            ◀ Prev
+                        </button>
+                        <span class="text-gray-400">Page <span id="pag-current" class="text-white font-bold">1</span> of
+                            <span id="pag-total-pages" class="text-white font-bold">1</span></span>
+                        <button id="btn-next"
+                            class="px-3 py-1 bg-white/[0.03] border border-white/[0.08] hover:bg-white/[0.08] text-gray-300 rounded cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            disabled>
+                            Next ▶
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Economic Calendar -->
+            <section class="bg-[#0c1017]/80 backdrop-blur border border-white/[0.06] rounded-xl p-4">
+                <h2
+                    class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-400 font-mono border-b border-white/[0.06] pb-2 mb-3">
+                    📅 Economic Calendar</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-[11px] font-mono border-collapse">
+                        <thead>
+                            <tr class="text-gray-500 uppercase border-b border-white/[0.05]">
+                                <th class="pb-1.5 text-left">Time</th>
+                                <th class="pb-1.5 text-left">Ctry</th>
+                                <th class="pb-1.5 text-left">Event</th>
+                                <th class="pb-1.5 text-center">Imp</th>
+                                <th class="pb-1.5 text-right">Act</th>
+                                <th class="pb-1.5 text-right">Exp</th>
+                                <th class="pb-1.5 text-right">Prev</th>
+                            </tr>
+                        </thead>
+                        <tbody id="calendar-body" class="divide-y divide-white/[0.03]">
+                            <tr>
+                                <td colspan="7" class="py-4 text-center text-gray-600 italic">Loading calendar data...
+                                </td>
                             </tr>
                         </tbody>
                     </table>

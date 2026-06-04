@@ -1,0 +1,17 @@
+{
+    "trades": {
+        "1": {
+            "time": "2026-06-04 09:06:59",
+            "type": "BUY",
+            "pattern": "EMA+RSI Scalper",
+            "candle_pattern": "Bullish Crossover",
+            "setup_key": "BUY_MID_RSI",
+            "confidence": 75,
+            "entry": "4465.11",
+            "exit": "4459.68",
+            "pnl": "-541.60",
+            "result": "LOSS",
+            "reason": "SL Hit: Indicator delay / Late entry. Reversal momentum faded as price consolidated below VWAP."
+        }
+    }
+}

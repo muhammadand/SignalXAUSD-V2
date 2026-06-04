@@ -128,6 +128,47 @@ def index():
 def get_state():
     return jsonify(state.get_serializable_state())
 
+@app.route("/api/trades")
+def get_trades():
+    from flask import request
+    from state_manager import trades_table
+    import math
+
+    try:
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 10))
+    except ValueError:
+        page = 1
+        limit = 10
+
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = 10
+
+    all_trades = trades_table.all()
+
+    # Sort trades descending by time
+    all_trades.sort(key=lambda t: t.get("time", ""), reverse=True)
+
+    total_trades = len(all_trades)
+    total_pages = max(1, (total_trades + limit - 1) // limit)
+
+    if page > total_pages:
+        page = total_pages
+
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    paginated_trades = all_trades[start_idx:end_idx]
+
+    return jsonify({
+        "trades": paginated_trades,
+        "page": page,
+        "limit": limit,
+        "total_trades": total_trades,
+        "total_pages": total_pages
+    })
+
 
 if __name__ == "__main__":
     start_deriv_client()
