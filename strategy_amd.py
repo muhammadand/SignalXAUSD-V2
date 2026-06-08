@@ -127,7 +127,7 @@ class EMARsiStrategy:
     CHOCH_MAX_BARS     = 15    # max bars to wait for CHoCH before invalidation
     ATR_PERIOD         = 14    # for SL sizing
     SL_ATR_MULTIPLIER  = 1.2   # wider SL to reduce premature stop outs
-    TP_RR              = 0.6   # risk-to-reward ratio for higher win rate
+    TP_RR              = 2.0   # risk-to-reward ratio 2:1
 
     def __init__(self, ema_fast=9, ema_slow=21, rsi_period=14, atr_period=14):
         # Keep signature compatible with state_manager instantiation
@@ -437,13 +437,13 @@ class EMARsiStrategy:
                 sl = self.sfp_wick_tip + (self.SL_ATR_MULTIPLIER * atr_val)
                 tp = entry_price - (risk * self.TP_RR)
 
-            # Ensure minimum 1:0.5 RR
+            # Ensure minimum 1:2.0 RR
             reward = abs(tp - entry_price)
-            if reward < 0.5 * risk:
+            if reward < 2.0 * risk:
                 if self.direction == "BUY":
-                    tp = entry_price + 0.5 * risk
+                    tp = entry_price + 2.0 * risk
                 else:
-                    tp = entry_price - 0.5 * risk
+                    tp = entry_price - 2.0 * risk
 
             self.phase = "ACTIVE"
             return {

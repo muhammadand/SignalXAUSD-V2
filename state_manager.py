@@ -4,6 +4,7 @@ from datetime import datetime
 import threading
 from strategy_amd import EMARsiStrategy, calculate_vwap, calculate_ema, calculate_rsi, calculate_atr
 from tinydb import TinyDB
+from ml_optimizer import ai_predictor, train_predictor_from_db
 
 # Initialize TinyDB
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db.json")
@@ -60,6 +61,9 @@ class TradingStationState:
         self.total_losses  = sum(1 for t in all_trades if t.get("result") == "LOSS")
 
         self._analysis_cooldown = 0
+
+        # Train ML model on startup
+        train_predictor_from_db()
 
     # ------------------------------------------------------------------
     def update_price(self, price):
@@ -132,6 +136,8 @@ class TradingStationState:
             # Save to TinyDB
             try:
                 trades_table.insert(trade_record)
+                # Retrain ML model with new data
+                train_predictor_from_db()
             except Exception as e:
                 print(f"Error saving to TinyDB: {e}")
 
@@ -227,18 +233,23 @@ class TradingStationState:
             setup_key = f"{direction}_SFP_CHOCH_{candle_pat.replace(' ', '_').upper()}"
             self.signal_setup_key = setup_key
 
-            # Query TinyDB for historical win-rate of this setup_key
-            try:
-                past_trades = trades_table.all()
-                matching = [t for t in past_trades if t.get("setup_key") == setup_key]
-                if len(matching) >= 3:
-                    wins = sum(1 for t in matching if t.get("result") == "WIN")
-                    win_rate = int(round((wins / len(matching)) * 100))
-                else:
-                    win_rate = 78  # Base confidence for SFP+CHoCH (slightly higher — more precise entry)
-            except Exception as e:
-                print(f"TinyDB learning query error: {e}")
-                win_rate = 78
+            setup_dict = {
+                "pattern": analysis.get("pattern", "SFP+CHoCH Scalper"),
+                "type": direction,
+                "candle_pattern": candle_pat,
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            # Predict win probability using Naive Bayes ML model
+            ml_prob = ai_predictor.predict_win_probability(setup_dict)
+            win_rate = int(round(ml_prob * 100))
+
+            # Filter out low-probability trades (< 50% chance of success)
+            if win_rate < 50:
+                print(f"AI ML Optimizer Filtered Setup: {direction} ({analysis.get('pattern', 'SFP')}) with confidence {win_rate}%. Skipping trade.")
+                self.signal_reason = f"Filtered by AI Optimizer: Low probability of success ({win_rate}%)."
+                self.amd_strategy.reset_state()
+                return
 
             self.signal_type           = direction
             self.signal_entry          = analysis["entry"]
