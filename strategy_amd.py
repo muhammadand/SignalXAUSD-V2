@@ -122,12 +122,12 @@ class EMARsiStrategy:
       ACTIVE (position open)
     """
 
-    SWING_LOOKBACK     = 4     # bars on each side to qualify a swing point
+    SWING_LOOKBACK     = 2     # bars on each side to qualify a swing point
     SWING_SEARCH_BACK  = 50    # how many closed candles to search for key swing levels
     CHOCH_MAX_BARS     = 15    # max bars to wait for CHoCH before invalidation
     ATR_PERIOD         = 14    # for SL sizing
-    SL_ATR_MULTIPLIER  = 0.5   # tight SL: half ATR beyond the wick
-    TP_RR              = 2.0   # risk-to-reward ratio
+    SL_ATR_MULTIPLIER  = 1.2   # wider SL to reduce premature stop outs
+    TP_RR              = 0.6   # risk-to-reward ratio for higher win rate
 
     def __init__(self, ema_fast=9, ema_slow=21, rsi_period=14, atr_period=14):
         # Keep signature compatible with state_manager instantiation
@@ -197,35 +197,34 @@ class EMARsiStrategy:
         # ── Bearish SFP: wick sweeps a swing HIGH but close is below that swing high ──
         swing_highs = find_swing_high(search_window[:-2], lookback=self.SWING_LOOKBACK)
         if swing_highs:
-            # Key level = the HIGHEST swing high found
-            key_swing_high = max(sh["price"] for sh in swing_highs)
-            if (sfp_candle["high"] > key_swing_high          # wick broke above
-                    and sfp_candle["close"] < key_swing_high # close back inside
-                    and sfp_candle["close"] < sfp_candle["open"]):  # candle is bearish
-                # CHoCH target = most recent local swing LOW (lower high boundary)
-                swing_lows = find_swing_low(search_window[:-2], lookback=self.SWING_LOOKBACK)
-                if swing_lows:
-                    # CHoCH trigger = break below the last swing low before the SFP
-                    choch_level = swing_lows[-1]["price"]
+            # Check the last 3 swing highs (most recent first) for a sweep
+            for sh in reversed(swing_highs[-3:]):
+                level = sh["price"]
+                if (sfp_candle["high"] > level                     # wick broke above
+                        and sfp_candle["close"] < level            # close back inside
+                        and sfp_candle["close"] < sfp_candle["open"]): # bearish candle
+                    
+                    # For aggressive entry, CHoCH level is the low of the SFP candle itself
+                    choch_level = sfp_candle["low"]
 
                     self.phase          = "SFP_DETECTED"
                     self.direction      = "SELL"
-                    self.sfp_sweep_level= key_swing_high
+                    self.sfp_sweep_level= level
                     self.sfp_wick_tip   = sfp_candle["high"]
                     self.sfp_epoch      = sfp_candle["epoch"]
                     self.choch_level    = choch_level
                     self.bars_since_sfp = 0
                     self.candle_pattern = "Bearish SFP"
-                    self.box_high       = key_swing_high
+                    self.box_high       = level
                     self.box_low        = choch_level
 
                     return {
                         "status": "SFP_DETECTED",
                         "direction": "SELL",
                         "candle_pattern": "Bearish SFP",
-                        "reason": (f"Bearish SFP: Wick swept swing high {key_swing_high:.2f}. "
-                                   f"Waiting CHoCH break below {choch_level:.2f}."),
-                        "box_high": key_swing_high,
+                        "reason": (f"Bearish SFP: Wick swept swing high {level:.2f}. "
+                                   f"Waiting aggressive break below SFP low {choch_level:.2f}."),
+                        "box_high": level,
                         "box_low": choch_level,
                         "manipulation_epoch": sfp_candle["epoch"]
                     }
@@ -233,46 +232,157 @@ class EMARsiStrategy:
         # ── Bullish SFP: wick sweeps a swing LOW but close is above that swing low ──
         swing_lows = find_swing_low(search_window[:-2], lookback=self.SWING_LOOKBACK)
         if swing_lows:
-            key_swing_low = min(sl["price"] for sl in swing_lows)
-            if (sfp_candle["low"] < key_swing_low             # wick broke below
-                    and sfp_candle["close"] > key_swing_low   # close back inside
-                    and sfp_candle["close"] > sfp_candle["open"]):  # candle is bullish
-                swing_highs = find_swing_high(search_window[:-2], lookback=self.SWING_LOOKBACK)
-                if swing_highs:
-                    choch_level = swing_highs[-1]["price"]
+            # Check the last 3 swing lows (most recent first) for a sweep
+            for sl in reversed(swing_lows[-3:]):
+                level = sl["price"]
+                if (sfp_candle["low"] < level                      # wick broke below
+                        and sfp_candle["close"] > level            # close back inside
+                        and sfp_candle["close"] > sfp_candle["open"]): # bullish candle
+                    
+                    # For aggressive entry, CHoCH level is the high of the SFP candle itself
+                    choch_level = sfp_candle["high"]
 
                     self.phase          = "SFP_DETECTED"
                     self.direction      = "BUY"
-                    self.sfp_sweep_level= key_swing_low
+                    self.sfp_sweep_level= level
                     self.sfp_wick_tip   = sfp_candle["low"]
                     self.sfp_epoch      = sfp_candle["epoch"]
                     self.choch_level    = choch_level
                     self.bars_since_sfp = 0
                     self.candle_pattern = "Bullish SFP"
                     self.box_high       = choch_level
-                    self.box_low        = key_swing_low
+                    self.box_low        = level
 
                     return {
                         "status": "SFP_DETECTED",
                         "direction": "BUY",
                         "candle_pattern": "Bullish SFP",
-                        "reason": (f"Bullish SFP: Wick swept swing low {key_swing_low:.2f}. "
-                                   f"Waiting CHoCH break above {choch_level:.2f}."),
+                        "reason": (f"Bullish SFP: Wick swept swing low {level:.2f}. "
+                                   f"Waiting aggressive break above SFP high {choch_level:.2f}."),
                         "box_high": choch_level,
-                        "box_low": key_swing_low,
+                        "box_low": level,
                         "manipulation_epoch": sfp_candle["epoch"]
                     }
 
-        # Calculate ATR and EMA for status message
-        ema9_data  = calculate_ema(closed[-30:], self.ema_fast)
-        ema21_data = calculate_ema(closed[-30:], self.ema_slow)
+        # Calculate indicators for alternative strategies
+        ema9_data  = calculate_ema(search_window, self.ema_fast)
+        ema21_data = calculate_ema(search_window, self.ema_slow)
+        rsi_data   = calculate_rsi(search_window, self.rsi_period)
+
         ema9_val   = ema9_data[-1]["value"] if ema9_data else current_price
         ema21_val  = ema21_data[-1]["value"] if ema21_data else current_price
+        rsi_val    = rsi_data[-1]["value"] if rsi_data else 50.0
+
+        # --- 2. EMA Crossover Strategy ---
+        if len(ema9_data) >= 3 and len(ema21_data) >= 3:
+            ema_cross_up = (ema9_data[-1]["value"] > ema21_data[-1]["value"] 
+                            and ema9_data[-2]["value"] <= ema21_data[-2]["value"]
+                            and closed[-1]["close"] > closed[-1]["open"]) # bullish confirmation
+            ema_cross_down = (ema9_data[-1]["value"] < ema21_data[-1]["value"] 
+                              and ema9_data[-2]["value"] >= ema21_data[-2]["value"]
+                              and closed[-1]["close"] < closed[-1]["open"]) # bearish confirmation
+
+            if ema_cross_up:
+                entry_price = current_price
+                risk = self.SL_ATR_MULTIPLIER * atr_val
+                sl = entry_price - risk
+                tp = entry_price + (risk * self.TP_RR)
+                self.phase = "ACTIVE"
+                self.direction = "BUY"
+                self.sfp_wick_tip = sl
+                return {
+                    "status": "ENTRY_TRIGGERED",
+                    "direction": "BUY",
+                    "entry": round(entry_price, 3),
+                    "sl":    round(sl, 3),
+                    "tp":    round(tp, 3),
+                    "rsi":   round(rsi_val, 2),
+                    "pattern": "EMA Crossover",
+                    "candle_pattern": "Bullish Cross",
+                    "reason": f"Bullish EMA Crossover: EMA9 ({ema9_val:.2f}) crossed above EMA21 ({ema21_val:.2f}). Entering BUY. SL={sl:.2f}, TP={tp:.2f} (1:{self.TP_RR} RR).",
+                    "box_high": None,
+                    "box_low":  None,
+                    "manipulation_epoch": closed[-1]["epoch"]
+                }
+
+            if ema_cross_down:
+                entry_price = current_price
+                risk = self.SL_ATR_MULTIPLIER * atr_val
+                sl = entry_price + risk
+                tp = entry_price - (risk * self.TP_RR)
+                self.phase = "ACTIVE"
+                self.direction = "SELL"
+                self.sfp_wick_tip = sl
+                return {
+                    "status": "ENTRY_TRIGGERED",
+                    "direction": "SELL",
+                    "entry": round(entry_price, 3),
+                    "sl":    round(sl, 3),
+                    "tp":    round(tp, 3),
+                    "rsi":   round(rsi_val, 2),
+                    "pattern": "EMA Crossover",
+                    "candle_pattern": "Bearish Cross",
+                    "reason": f"Bearish EMA Crossover: EMA9 ({ema9_val:.2f}) crossed below EMA21 ({ema21_val:.2f}). Entering SELL. SL={sl:.2f}, TP={tp:.2f} (1:{self.TP_RR} RR).",
+                    "box_high": None,
+                    "box_low":  None,
+                    "manipulation_epoch": closed[-1]["epoch"]
+                }
+
+        # --- 3. RSI Mean Reversion Strategy ---
+        if len(rsi_data) >= 4:
+            rsi_oversold = any(r["value"] < 30 for r in rsi_data[-4:-1]) and rsi_data[-1]["value"] >= 30
+            rsi_overbought = any(r["value"] > 70 for r in rsi_data[-4:-1]) and rsi_data[-1]["value"] <= 70
+
+            if rsi_oversold:
+                entry_price = current_price
+                risk = self.SL_ATR_MULTIPLIER * atr_val
+                sl = entry_price - risk
+                tp = entry_price + (risk * self.TP_RR)
+                self.phase = "ACTIVE"
+                self.direction = "BUY"
+                self.sfp_wick_tip = sl
+                return {
+                    "status": "ENTRY_TRIGGERED",
+                    "direction": "BUY",
+                    "entry": round(entry_price, 3),
+                    "sl":    round(sl, 3),
+                    "tp":    round(tp, 3),
+                    "rsi":   round(rsi_val, 2),
+                    "pattern": "RSI Reversal",
+                    "candle_pattern": "RSI Oversold",
+                    "reason": f"RSI Oversold Reversal (RSI={rsi_val:.1f}). Entering BUY. SL={sl:.2f}, TP={tp:.2f} (1:{self.TP_RR} RR).",
+                    "box_high": None,
+                    "box_low":  None,
+                    "manipulation_epoch": closed[-1]["epoch"]
+                }
+
+            if rsi_overbought:
+                entry_price = current_price
+                risk = self.SL_ATR_MULTIPLIER * atr_val
+                sl = entry_price + risk
+                tp = entry_price - (risk * self.TP_RR)
+                self.phase = "ACTIVE"
+                self.direction = "SELL"
+                self.sfp_wick_tip = sl
+                return {
+                    "status": "ENTRY_TRIGGERED",
+                    "direction": "SELL",
+                    "entry": round(entry_price, 3),
+                    "sl":    round(sl, 3),
+                    "tp":    round(tp, 3),
+                    "rsi":   round(rsi_val, 2),
+                    "pattern": "RSI Reversal",
+                    "candle_pattern": "RSI Overbought",
+                    "reason": f"RSI Overbought Reversal (RSI={rsi_val:.1f}). Entering SELL. SL={sl:.2f}, TP={tp:.2f} (1:{self.TP_RR} RR).",
+                    "box_high": None,
+                    "box_low":  None,
+                    "manipulation_epoch": closed[-1]["epoch"]
+                }
 
         return {
             "status": "SCANNING_SFP",
-            "reason": (f"Scanning SFP… EMA9:{ema9_val:.2f} EMA21:{ema21_val:.2f} "
-                       f"ATR:{atr_val:.2f}"),
+            "reason": (f"Scanning (SFP/EMA/RSI)… EMA9:{ema9_val:.2f} EMA21:{ema21_val:.2f} "
+                       f"RSI:{rsi_val:.1f} ATR:{atr_val:.2f}"),
             "box_high": self.box_high or None,
             "box_low":  self.box_low  or None
         }
@@ -327,13 +437,13 @@ class EMARsiStrategy:
                 sl = self.sfp_wick_tip + (self.SL_ATR_MULTIPLIER * atr_val)
                 tp = entry_price - (risk * self.TP_RR)
 
-            # Ensure minimum 1:1.5 RR
+            # Ensure minimum 1:0.5 RR
             reward = abs(tp - entry_price)
-            if reward < 1.5 * risk:
+            if reward < 0.5 * risk:
                 if self.direction == "BUY":
-                    tp = entry_price + 1.5 * risk
+                    tp = entry_price + 0.5 * risk
                 else:
-                    tp = entry_price - 1.5 * risk
+                    tp = entry_price - 0.5 * risk
 
             self.phase = "ACTIVE"
             return {
