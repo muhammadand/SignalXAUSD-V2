@@ -399,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchTrades(page = 1) {
         try {
-            const res = await fetch(`/api/trades?page=${page}&limit=10`);
+            const res = await fetch(`/api/trades?page=${page}&limit=10&t=${Date.now()}`);
             if (!res.ok) throw new Error('API error');
             const data = await res.json();
 
@@ -494,7 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ════════════════════════════════════════════════ */
     async function fetchState() {
         try {
-            const res = await fetch('/api/state');
+            const res = await fetch(`/api/state?t=${Date.now()}`);
             if (!res.ok) throw new Error('API error');
             const data = await res.json();
             allData = data;
