@@ -122,11 +122,11 @@ class EMARsiStrategy:
       ACTIVE (position open)
     """
 
-    SWING_LOOKBACK     = 2     # bars on each side to qualify a swing point
+    SWING_LOOKBACK     = 1     # bars on each side to qualify a swing point
     SWING_SEARCH_BACK  = 50    # how many closed candles to search for key swing levels
     CHOCH_MAX_BARS     = 15    # max bars to wait for CHoCH before invalidation
     ATR_PERIOD         = 14    # for SL sizing
-    SL_ATR_MULTIPLIER  = 1.2   # wider SL to reduce premature stop outs
+    SL_ATR_MULTIPLIER  = 0.8   # narrower SL to increase signal frequency and tightness
     TP_RR              = 2.0   # risk-to-reward ratio 2:1
 
     def __init__(self, ema_fast=9, ema_slow=21, rsi_period=14, atr_period=14):

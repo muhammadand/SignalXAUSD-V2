@@ -161,17 +161,37 @@ class TradingStationState:
             self.amd_strategy.reset_state()
             self.amd_info = {}
 
-            # Brief cooldown before next signal
-            self._analysis_cooldown = 5
+            # Brief cooldown before next signal (reduced from 5 to 2 to be more aggressive)
+            self._analysis_cooldown = 2
 
     def _generate_pnl_reason(self, hit, signal_type, exit_price):
         # Analyse the last 5 closed M1 candles to assess recent momentum
         recent_candles = self.candles_m1[-5:] if len(self.candles_m1) >= 5 else []
         bullish_count = sum(1 for c in recent_candles if c["close"] >= c["open"])
         bearish_count = len(recent_candles) - bullish_count
+        candle_summary = f"{bullish_count} bullish, {bearish_count} bearish in the last 5 M1 candles"
 
         pattern = self.signal_candle_pattern or "SFP"
+        pnl_val = (exit_price - self.position_entry) * 100 if signal_type == "BUY" else (self.position_entry - exit_price) * 100
 
+        # Try to use AI analysis from Agent Router
+        try:
+            from ai_analyzer import generate_trade_outcome_reason
+            ai_reason = generate_trade_outcome_reason(
+                hit=hit,
+                direction=signal_type,
+                pattern=pattern,
+                entry=self.position_entry,
+                exit=exit_price,
+                pnl=f"{pnl_val:+.2f}",
+                recent_candles_summary=candle_summary
+            )
+            if ai_reason:
+                return ai_reason
+        except Exception as e:
+            print(f"AI post-trade reason failed: {e}")
+
+        # Fallback to templates if AI is not available
         if hit == "WIN":
             if signal_type == "BUY":
                 reasons = [
@@ -244,8 +264,8 @@ class TradingStationState:
             ml_prob = ai_predictor.predict_win_probability(setup_dict)
             win_rate = int(round(ml_prob * 100))
 
-            # Filter out low-probability trades (< 50% chance of success)
-            if win_rate < 50:
+            # Filter out low-probability trades (< 40% chance of success - lowered from 50 to be more aggressive)
+            if win_rate < 40:
                 print(f"AI ML Optimizer Filtered Setup: {direction} ({analysis.get('pattern', 'SFP')}) with confidence {win_rate}%. Skipping trade.")
                 self.signal_reason = f"Filtered by AI Optimizer: Low probability of success ({win_rate}%)."
                 self.amd_strategy.reset_state()
@@ -256,7 +276,37 @@ class TradingStationState:
             self.signal_sl             = analysis["sl"]
             self.signal_tp             = analysis["tp"]
             self.signal_confidence     = win_rate
-            self.signal_reason         = analysis["reason"]
+
+            # Calculate current indicator values for AI analysis
+            ema9_data  = calculate_ema(self.candles_m1, 9)
+            ema21_data = calculate_ema(self.candles_m1, 21)
+            rsi_data   = calculate_rsi(self.candles_m1, 14)
+            atr_data   = calculate_atr(self.candles_m1, 14)
+
+            ema9 = ema9_data[-1]["value"] if ema9_data else analysis["entry"]
+            ema21 = ema21_data[-1]["value"] if ema21_data else analysis["entry"]
+            rsi = rsi_data[-1]["value"] if rsi_data else 50.0
+            atr = atr_data[-1]["value"] if atr_data else 1.0
+
+            # Generate AI-powered entry rationale
+            try:
+                from ai_analyzer import generate_entry_reason
+                self.signal_reason = generate_entry_reason(
+                    direction=direction,
+                    pattern=analysis.get("pattern", "SFP+CHoCH Scalper"),
+                    candle_pattern=candle_pat,
+                    entry_price=analysis["entry"],
+                    sl=analysis["sl"],
+                    tp=analysis["tp"],
+                    ema9=ema9,
+                    ema21=ema21,
+                    rsi=rsi,
+                    atr=atr
+                )
+            except Exception as e:
+                print(f"AI entry reason generation failed: {e}")
+                self.signal_reason = analysis["reason"]
+
             self.signal_pattern        = analysis.get("pattern", "SFP+CHoCH Scalper")
             self.signal_candle_pattern = candle_pat
 
